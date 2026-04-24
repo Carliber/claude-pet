@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Claude Pet</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: transparent;
+  overflow: hidden;
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  user-select: none;
+}
+.pet-root {
+  display: flex; flex-direction: column; align-items: center;
+  height: 100vh; padding: 12px 8px 8px;
+  -webkit-app-region: drag;
+}
+.crab-wrap {
+  position: relative; z-index: 2;
+  filter: drop-shadow(0 4px 12px rgba(255,107,53,0.25));
+}
+canvas { display: block; }
+.bubble-wrap {
+  margin-top: 6px; max-width: 150px;
+  opacity: 0; transform: translateY(4px);
+  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  z-index: 2;
+}
+.bubble-wrap.visible { opacity: 1; transform: translateY(0); }
+.bubble-arrow {
+  width: 0; height: 0; border-left: 6px solid transparent;
+  border-right: 6px solid transparent; border-bottom: 5px solid rgba(255,255,255,0.92);
+  margin: 0 auto;
+}
+.bubble {
+  background: rgba(255,255,255,0.92); border-radius: 10px;
+  padding: 6px 10px; font-size: 12px; color: #1e293b;
+  line-height: 1.4; word-wrap: break-word; max-height: 60px;
+  overflow-y: auto;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+}
+.bubble::-webkit-scrollbar { width: 3px; }
+.bubble::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+
+/* Animations */
+@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)} }
+@keyframes idle-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+.anim-bounce { animation: bounce 0.5s ease-in-out infinite; }
+.anim-pulse { animation: pulse 0.7s ease-in-out infinite; }
+.anim-shake { animation: shake 0.15s ease-in-out infinite; }
+.anim-idle { animation: idle-float 2.5s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div class="pet-root">
+  <div class="crab-wrap">
+    <canvas id="crab-canvas" width="120" height="120"></canvas>
+  </div>
+  <div class="bubble-wrap" id="bubble-wrap">
+    <div class="bubble-arrow"></div>
+    <div class="bubble" id="bubble"></div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('crab-canvas');
+const ctx = canvas.getContext('2d');
+const bubbleWrap = document.getElementById('bubble-wrap');
+const bubbleEl = document.getElementById('bubble');
+
+let currentState = 'IDLE';
+let bubbleTimeout = null;
+
+const STATUS_MESSAGES = {
+  THINKING: ['让我想想...', '思考中...', '大脑运转中...', '嗯...让我看看'],
+  ANALYZING: ['深入分析中...', '解析中...', '研究中...'],
+  CODING: ['正在写代码...', 'Coding中...', '敲代码中...'],
+  EXECUTING: ['执行命令中...', '运行ing...', '处理中...'],
+  USING_TOOLS: ['使用工具中...', '调用工具ing...'],
+  DONE: ['搞定!', '完成啦!', '大功告成!', '任务完成~'],
+  ERROR: ['哎呀，出错了...', '呜呜，出问题了...'],
+  IDLE: ['有什么可以帮你的吗?', '随时待命!', '等指令中~'],
+  HAPPY: ['太棒了!', '嘿嘿~'],
+  SLEEPING: ['呼噜呼噜...', 'ZZZ...'],
+};
+
+const ANIM_MAP = {
+  IDLE: 'anim-idle', THINKING: 'anim-pulse', ANALYZING: 'anim-pulse',
+  CODING: 'anim-bounce', EXECUTING: 'anim-shake',
+  USING_TOOLS: 'anim-pulse', DONE: 'anim-bounce',
+  ERROR: 'anim-shake', HAPPY: 'anim-bounce', SLEEPING: 'anim-idle',
+};
+
+function drawCrab(state) {
+  ctx.clearRect(0, 0, 120, 120);
+  ctx.save();
+  ctx.scale(1.2, 1.2);
+
+  ctx.shadowColor = 'rgba(255,107,53,0.3)';
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = '#ff6b35';
+  roundRect(ctx, 20, 40, 60, 40, 10);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  roundRect(ctx, 24, 42, 52, 12, 6);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(35, 35, 8, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(65, 35, 8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath(); ctx.arc(37, 33, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(67, 33, 2.5, 0, Math.PI*2); ctx.fill();
+
+  if (state === 'SLEEPING') {
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(29,35); ctx.lineTo(41,35); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(59,35); ctx.lineTo(71,35); ctx.stroke();
+    ctx.strokeStyle = '#8b0000'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(50, 58, 6, 0.1*Math.PI, 0.9*Math.PI); ctx.stroke();
+  } else if (state === 'CRYING') {
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(35, 35, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(65, 35, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#8b0000';
+    ctx.beginPath(); ctx.ellipse(50, 65, 8, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#4fc3f7';
+    ctx.beginPath(); ctx.ellipse(30, 46, 2, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(70, 46, 2, 4, 0, 0, Math.PI*2); ctx.fill();
+  } else if (state === 'HAPPY' || state === 'DONE') {
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(35, 33, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(65, 33, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#8b0000'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(50, 58, 8, 0.1*Math.PI, 0.9*Math.PI); ctx.stroke();
+  } else if (state === 'SURPRISED') {
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(35, 35, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(65, 35, 5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#8b0000';
+    ctx.beginPath(); ctx.arc(50, 62, 7, 0, Math.PI*2); ctx.fill();
+  } else if (state === 'ANGRY') {
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(35, 35, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(65, 35, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(28, 26); ctx.lineTo(40, 28); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(72, 26); ctx.lineTo(60, 28); ctx.stroke();
+    ctx.fillStyle = '#8b0000';
+    ctx.beginPath(); ctx.ellipse(50, 63, 10, 5, 0, 0, Math.PI*2); ctx.fill();
+  } else {
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(35, 35, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(65, 35, 3.5, 0, Math.PI*2); ctx.fill();
+  }
+
+  ctx.fillStyle = '#ff7b47';
+  ctx.beginPath(); ctx.arc(15, 55, 12, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(85, 55, 12, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ff6b35';
+  ctx.beginPath(); ctx.arc(8, 45, 6, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(92, 45, 6, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.beginPath(); ctx.arc(14, 52, 5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(84, 52, 5, 0, Math.PI*2); ctx.fill();
+
+  if (state === 'CODING' || state === 'EXECUTING') {
+    ctx.fillStyle = '#8b0000';
+    ctx.beginPath(); ctx.ellipse(50, 65, 8, 5, 0, 0, Math.PI*2); ctx.fill();
+  }
+  if (state === 'THINKING' || state === 'ANALYZING') {
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.arc(75, 20, 7, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(84, 11, 4.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(90, 5, 2.5, 0, Math.PI*2); ctx.fill();
+  }
+  if (state === 'SLEEPING') {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = 'bold 9px sans-serif'; ctx.fillText('Z', 75, 18);
+    ctx.font = 'bold 7px sans-serif'; ctx.fillText('z', 84, 10);
+    ctx.font = 'bold 5px sans-serif'; ctx.fillText('z', 90, 5);
+  }
+  ctx.restore();
+}
+
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x+r, y);
+  c.lineTo(x+w-r, y); c.quadraticCurveTo(x+w, y, x+w, y+r);
+  c.lineTo(x+w, y+h-r); c.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  c.lineTo(x+r, y+h); c.quadraticCurveTo(x, y+h, x, y+h-r);
+  c.lineTo(x, y+r); c.quadraticCurveTo(x, y, x+r, y);
+  c.closePath(); c.fill();
+}
+
+function setStatus(state) {
+  if (currentState === state) return;
+  currentState = state;
+  drawCrab(state);
+  canvas.className = ANIM_MAP[state] || 'anim-idle';
+  const msgs = STATUS_MESSAGES[state] || STATUS_MESSAGES.IDLE;
+  showBubble(msgs[Math.floor(Math.random() * msgs.length)]);
+}
+
+function showBubble(text) {
+  clearTimeout(bubbleTimeout);
+  bubbleEl.textContent = text;
+  bubbleWrap.classList.add('visible');
+  bubbleTimeout = setTimeout(() => bubbleWrap.classList.remove('visible'), 6000);
+}
+
+if (window.electronAPI && window.electronAPI.onPetStatus) {
+  window.electronAPI.onPetStatus((status) => setStatus(status));
+}
+
+drawCrab('IDLE');
+canvas.className = 'anim-idle';
+</script>
+</body>
+</html>
