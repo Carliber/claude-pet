@@ -16,7 +16,8 @@ body {
   height: 100vh; padding: 12px 8px 8px;
   -webkit-app-region: drag;
 }
-.crab-wrap {
+.pet-root.compact { padding: 4px 4px 4px; }
+.pet-wrap {
   position: relative; z-index: 2;
   filter: drop-shadow(0 4px 12px rgba(255,107,53,0.25));
 }
@@ -28,6 +29,7 @@ canvas { display: block; }
   z-index: 2;
 }
 .bubble-wrap.visible { opacity: 1; transform: translateY(0); }
+.bubble-wrap.hidden { display: none; }
 .bubble-arrow {
   width: 0; height: 0; border-left: 6px solid transparent;
   border-right: 6px solid transparent; border-bottom: 5px solid rgba(255,255,255,0.92);
@@ -55,22 +57,28 @@ canvas { display: block; }
 </style>
 </head>
 <body>
-<div class="pet-root">
-  <div class="crab-wrap">
-    <canvas id="crab-canvas" width="120" height="120"></canvas>
+<div class="pet-root" id="pet-root">
+  <div class="pet-wrap" id="pet-wrap">
+    <canvas id="pet-canvas" width="120" height="120"></canvas>
   </div>
   <div class="bubble-wrap" id="bubble-wrap">
     <div class="bubble-arrow"></div>
     <div class="bubble" id="bubble"></div>
   </div>
 </div>
+
+<script src="skins/crab.js"></script>
+<script src="skins/penguin.js"></script>
 <script>
-const canvas = document.getElementById('crab-canvas');
+const canvas = document.getElementById('pet-canvas');
 const ctx = canvas.getContext('2d');
 const bubbleWrap = document.getElementById('bubble-wrap');
 const bubbleEl = document.getElementById('bubble');
+const petRoot = document.getElementById('pet-root');
+const petWrap = document.getElementById('pet-wrap');
 
 let currentState = 'IDLE';
+let currentSkin = 'crab';
 let bubbleTimeout = null;
 
 const STATUS_MESSAGES = {
@@ -93,112 +101,37 @@ const ANIM_MAP = {
   ERROR: 'anim-shake', HAPPY: 'anim-bounce', SLEEPING: 'anim-idle',
 };
 
-function drawCrab(state) {
-  ctx.clearRect(0, 0, 120, 120);
-  ctx.save();
-  ctx.scale(1.2, 1.2);
-
-  ctx.shadowColor = 'rgba(255,107,53,0.3)';
-  ctx.shadowBlur = 8;
-  ctx.fillStyle = '#ff6b35';
-  roundRect(ctx, 20, 40, 60, 40, 10);
-  ctx.shadowBlur = 0;
-
-  ctx.fillStyle = 'rgba(255,255,255,0.1)';
-  roundRect(ctx, 24, 42, 52, 12, 6);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.arc(35, 35, 8, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(65, 35, 8, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.beginPath(); ctx.arc(37, 33, 2.5, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(67, 33, 2.5, 0, Math.PI*2); ctx.fill();
-
-  if (state === 'SLEEPING') {
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(29,35); ctx.lineTo(41,35); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(59,35); ctx.lineTo(71,35); ctx.stroke();
-    ctx.strokeStyle = '#8b0000'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(50, 58, 6, 0.1*Math.PI, 0.9*Math.PI); ctx.stroke();
-  } else if (state === 'CRYING') {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(35, 35, 3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(65, 35, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#8b0000';
-    ctx.beginPath(); ctx.ellipse(50, 65, 8, 5, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#4fc3f7';
-    ctx.beginPath(); ctx.ellipse(30, 46, 2, 4, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(70, 46, 2, 4, 0, 0, Math.PI*2); ctx.fill();
-  } else if (state === 'HAPPY' || state === 'DONE') {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(35, 33, 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(65, 33, 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#8b0000'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(50, 58, 8, 0.1*Math.PI, 0.9*Math.PI); ctx.stroke();
-  } else if (state === 'SURPRISED') {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(35, 35, 5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(65, 35, 5, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#8b0000';
-    ctx.beginPath(); ctx.arc(50, 62, 7, 0, Math.PI*2); ctx.fill();
-  } else if (state === 'ANGRY') {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(35, 35, 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(65, 35, 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(28, 26); ctx.lineTo(40, 28); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(72, 26); ctx.lineTo(60, 28); ctx.stroke();
-    ctx.fillStyle = '#8b0000';
-    ctx.beginPath(); ctx.ellipse(50, 63, 10, 5, 0, 0, Math.PI*2); ctx.fill();
-  } else {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(35, 35, 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(65, 35, 3.5, 0, Math.PI*2); ctx.fill();
-  }
-
-  ctx.fillStyle = '#ff7b47';
-  ctx.beginPath(); ctx.arc(15, 55, 12, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(85, 55, 12, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#ff6b35';
-  ctx.beginPath(); ctx.arc(8, 45, 6, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(92, 45, 6, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
-  ctx.beginPath(); ctx.arc(14, 52, 5, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(84, 52, 5, 0, Math.PI*2); ctx.fill();
-
-  if (state === 'CODING' || state === 'EXECUTING') {
-    ctx.fillStyle = '#8b0000';
-    ctx.beginPath(); ctx.ellipse(50, 65, 8, 5, 0, 0, Math.PI*2); ctx.fill();
-  }
-  if (state === 'THINKING' || state === 'ANALYZING') {
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.beginPath(); ctx.arc(75, 20, 7, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(84, 11, 4.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(90, 5, 2.5, 0, Math.PI*2); ctx.fill();
-  }
-  if (state === 'SLEEPING') {
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = 'bold 9px sans-serif'; ctx.fillText('Z', 75, 18);
-    ctx.font = 'bold 7px sans-serif'; ctx.fillText('z', 84, 10);
-    ctx.font = 'bold 5px sans-serif'; ctx.fillText('z', 90, 5);
-  }
-  ctx.restore();
+function getSkin() {
+  return window.SKINS[currentSkin] || window.SKINS.crab;
 }
 
-function roundRect(c, x, y, w, h, r) {
-  c.beginPath();
-  c.moveTo(x+r, y);
-  c.lineTo(x+w-r, y); c.quadraticCurveTo(x+w, y, x+w, y+r);
-  c.lineTo(x+w, y+h-r); c.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-  c.lineTo(x+r, y+h); c.quadraticCurveTo(x, y+h, x, y+h-r);
-  c.lineTo(x, y+r); c.quadraticCurveTo(x, y, x+r, y);
-  c.closePath(); c.fill();
+function drawPet(state) {
+  const skin = getSkin();
+  skin.draw(ctx, state);
+  petWrap.style.filter = `drop-shadow(0 4px 12px ${skin.shadowColor})`;
+}
+
+function applySettings(settings) {
+  if (settings.skin && window.SKINS[settings.skin]) {
+    currentSkin = settings.skin;
+  }
+  if (settings.showBubble === false) {
+    bubbleWrap.classList.add('hidden');
+  } else {
+    bubbleWrap.classList.remove('hidden');
+  }
+  if (settings.compact) {
+    petRoot.classList.add('compact');
+  } else {
+    petRoot.classList.remove('compact');
+  }
+  drawPet(currentState);
 }
 
 function setStatus(state) {
   if (currentState === state) return;
   currentState = state;
-  drawCrab(state);
+  drawPet(state);
   canvas.className = ANIM_MAP[state] || 'anim-idle';
   const msgs = STATUS_MESSAGES[state] || STATUS_MESSAGES.IDLE;
   showBubble(msgs[Math.floor(Math.random() * msgs.length)]);
@@ -211,11 +144,13 @@ function showBubble(text) {
   bubbleTimeout = setTimeout(() => bubbleWrap.classList.remove('visible'), 6000);
 }
 
-if (window.electronAPI && window.electronAPI.onPetStatus) {
+// IPC listeners
+if (window.electronAPI) {
   window.electronAPI.onPetStatus((status) => setStatus(status));
+  window.electronAPI.onSettings((settings) => applySettings(settings));
 }
 
-drawCrab('IDLE');
+drawPet('IDLE');
 canvas.className = 'anim-idle';
 </script>
 </body>

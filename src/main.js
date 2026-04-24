@@ -3,23 +3,73 @@ const path = require('path');
 const fs = require('fs');
 
 const CLAUDE_DIR = path.join(process.env.USERPROFILE || process.env.HOME, '.claude');
-app.setPath('userData', path.join(process.env.USERPROFILE || process.env.HOME, '.claude-tool-electron', 'pet-cache'));
+const PET_DATA_DIR = path.join(process.env.USERPROFILE || process.env.HOME, '.claude-tool-electron', 'pet-cache');
+app.setPath('userData', PET_DATA_DIR);
 const CLAUDE_PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 const ROOT_DIR = path.join(__dirname, '..');
 const preloadPath = path.join(__dirname, 'preload.js');
+const SETTINGS_PATH = path.join(PET_DATA_DIR, 'settings.json');
+
+const DEFAULT_SETTINGS = { skin: 'crab', showBubble: true, compact: false };
+const AVAILABLE_SKINS = [
+  { id: 'crab', label: '螃蟹' },
+  { id: 'penguin', label: '企鹅' },
+];
 
 let petWindow = null;
 let tray = null;
 let isQuitting = false;
+let settings = { ...DEFAULT_SETTINGS };
 
+// --- Settings ---
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) {
+      const data = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
+      settings = { ...DEFAULT_SETTINGS, ...data };
+    }
+  } catch {}
+}
+
+function saveSettings() {
+  try {
+    if (!fs.existsSync(PET_DATA_DIR)) fs.mkdirSync(PET_DATA_DIR, { recursive: true });
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+  } catch {}
+}
+
+function sendSettings() {
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.webContents.send('pet:settings', settings);
+  }
+}
+
+function updateSettings(patch) {
+  Object.assign(settings, patch);
+  saveSettings();
+  sendSettings();
+  rebuildTrayMenu();
+  if ('compact' in patch) resizeWindow();
+}
+
+function resizeWindow() {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  if (settings.compact) {
+    petWindow.setSize(130, 130);
+  } else {
+    petWindow.setSize(160, 200);
+  }
+}
+
+// --- Window & Tray ---
 function createTrayIcon() {
   return nativeImage.createFromPath(path.join(ROOT_DIR, 'assets', 'icon.png'));
 }
 
 function createPetWindow() {
+  const size = settings.compact ? [130, 130] : [160, 200];
   petWindow = new BrowserWindow({
-    width: 160,
-    height: 200,
+    width: size[0], height: size[1],
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -29,12 +79,35 @@ function createPetWindow() {
     webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false },
   });
   petWindow.loadFile(path.join(ROOT_DIR, 'assets', 'pet.html'));
-  petWindow.once('ready-to-show', () => petWindow.show());
+  petWindow.once('ready-to-show', () => {
+    petWindow.show();
+    sendSettings();
+  });
   petWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault();
       petWindow.hide();
     }
+  });
+  petWindow.webContents.on('context-menu', () => {
+    const menu = Menu.buildFromTemplate([
+      { label: '皮肤', submenu: AVAILABLE_SKINS.map(s => ({
+          label: s.label,
+          type: 'radio',
+          checked: settings.skin === s.id,
+          click: () => updateSettings({ skin: s.id }),
+        }))
+      },
+      { type: 'separator' },
+      { label: '显示状态气泡', type: 'checkbox', checked: settings.showBubble,
+        click: (item) => updateSettings({ showBubble: item.checked }) },
+      { label: '紧凑模式', type: 'checkbox', checked: settings.compact,
+        click: (item) => updateSettings({ compact: item.checked }) },
+      { type: 'separator' },
+      { label: '隐藏宠物', click: () => petWindow.hide() },
+      { label: '退出', click: () => { isQuitting = true; app.quit(); } },
+    ]);
+    menu.popup({ window: petWindow });
   });
 }
 
@@ -42,14 +115,31 @@ function createTray() {
   const icon = createTrayIcon();
   tray = new Tray(icon);
   tray.setToolTip('Claude Pet');
+  rebuildTrayMenu();
+  tray.on('double-click', () => { if (petWindow) petWindow.show(); });
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
   const contextMenu = Menu.buildFromTemplate([
     { label: '显示宠物', click: () => { if (petWindow) petWindow.show(); } },
     { label: '隐藏宠物', click: () => { if (petWindow) petWindow.hide(); } },
     { type: 'separator' },
+    { label: '皮肤', submenu: AVAILABLE_SKINS.map(s => ({
+        label: s.label,
+        type: 'radio',
+        checked: settings.skin === s.id,
+        click: () => updateSettings({ skin: s.id }),
+      }))
+    },
+    { label: '显示状态气泡', type: 'checkbox', checked: settings.showBubble,
+      click: (item) => updateSettings({ showBubble: item.checked }) },
+    { label: '紧凑模式', type: 'checkbox', checked: settings.compact,
+      click: (item) => updateSettings({ compact: item.checked }) },
+    { type: 'separator' },
     { label: '退出', click: () => { isQuitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(contextMenu);
-  tray.on('double-click', () => { if (petWindow) petWindow.show(); });
 }
 
 function sendPetStatus(status) {
@@ -60,10 +150,9 @@ function sendPetStatus(status) {
 
 // --- Global jsonl watcher ---
 const lineOffsets = new Map();
-const sessionStates = new Map(); // sessionKey -> state (THINKING/CODING/DONE)
+const sessionStates = new Map();
 let idleTimer = null;
 
-// Priority: CODING > THINKING > DONE > IDLE
 const STATE_PRIORITY = { CODING: 3, EXECUTING: 3, THINKING: 2, ANALYZING: 2, DONE: 1, IDLE: 0, ERROR: 0 };
 
 function getAggregatedState() {
@@ -78,7 +167,6 @@ function getAggregatedState() {
 
 function updateSessionState(key, state) {
   if (state === 'DONE') {
-    // Clear session after showing DONE briefly
     sessionStates.set(key, state);
     setTimeout(() => {
       sessionStates.delete(key);
@@ -193,6 +281,7 @@ function processJsonlChange(dirPath, dirName, filename) {
   } catch {}
 }
 
+loadSettings();
 app.whenReady().then(() => {
   createPetWindow();
   createTray();
