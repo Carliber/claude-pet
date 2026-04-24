@@ -18,9 +18,9 @@
 
 前往 [Releases](https://github.com/Carliber/claude-pet/releases/latest) 下载最新版本：
 
-1. 下载 `Claude Pet-win32-x64.zip`
+1. 下载对应平台的压缩包
 2. 解压到任意目录
-3. 双击 `Claude Pet.exe` 启动
+3. 运行可执行文件启动
 
 ## 从源码运行
 
@@ -30,6 +30,16 @@
 npm install
 npm start
 ```
+
+## 打包
+
+```bash
+npm run build:win      # Windows x64
+npm run build:mac      # macOS Intel
+npm run build:mac-arm  # macOS Apple Silicon
+```
+
+打包产物输出到 `dist/` 目录。
 
 ## 工作原理
 
