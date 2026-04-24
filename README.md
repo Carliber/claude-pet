@@ -14,22 +14,22 @@
 - 气泡提示随机显示状态文案
 - 系统托盘驻留，双击托盘图标显示/隐藏
 
-## 安装与运行
+## 下载安装
 
-### 前置要求
+前往 [Releases](https://github.com/Carliber/claude-pet/releases/latest) 下载最新版本：
 
-- Node.js >= 18
+1. 下载 `Claude Pet-win32-x64.zip`
+2. 解压到任意目录
+3. 双击 `Claude Pet.exe` 启动
 
-### 方式一：命令行启动
+## 从源码运行
+
+需要 Node.js >= 18：
 
 ```bash
 npm install
 npm start
 ```
-
-### 方式二：Windows 双击启动
-
-直接双击 `run.bat`，会自动检查 Node.js、安装依赖并启动。
 
 ## 工作原理
 
@@ -48,9 +48,7 @@ claude-pet/
 ├── assets/
 │   ├── pet.html       # Canvas 螃蟹渲染 + CSS 动画
 │   └── icon.png       # 托盘图标
-├── package.json
-├── .npmrc             # 国内 Electron 镜像加速
-└── run.bat            # Windows 一键启动
+└── package.json
 ```
 
 ## 技术栈
