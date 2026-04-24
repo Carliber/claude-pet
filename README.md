@@ -59,6 +59,10 @@ claude-pet/
 - Canvas 2D 绘图
 - 原生 fs.watch 文件监听
 
+## 致谢
+
+灵感来源：[Joe-fly/claude-pet](https://github.com/Joe-fly/claude-pet)
+
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)
