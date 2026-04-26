@@ -5,3 +5,5 @@ dist/
 CLAUDE.md
 run.bat
 .npmrc
+download/
+mise.toml
